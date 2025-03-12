@@ -1,0 +1,441 @@
+---
+title: "Estadisticas Sociales EPH Entre Ríos"
+output: 
+  html_document:
+    code_folding: show
+    theme:
+      bg: "#202123"
+      fg: "#B8BCC2"
+      primary: "#EA80FC"
+      secondary: "#00DAC6"
+      base_font:
+        google: Prompt
+      heading_font:
+        google: Proza Libre
+---
+
+```{r setup, include=FALSE}
+if (requireNamespace("thematic")) 
+  thematic::thematic_rmd(font = "auto")
+```
+
+# Estadísticas Sociales básicas Entre Ríos
+
+Cargamo primeramente en R la librerias con las cuales vamos a trabajar.
+
+```{r echo=off, message=FALSE, warning=FALSE}}
+library(tidyverse) # cargamos la librería tidyverse (que incorpora ggplot)
+library(ggthemes) # diseños preconfigurados para los gráficos ggplot
+library(readxl) # Cargamos readxl para traer levantar excels
+library(openxlsx) # Abrir excels 
+library(eph) # paquete EPH
+library(scales)
+library(ggplot2) #Graficar 
+library(dplyr) # Hacer pipes 
+library(knitr) # ensamblar 
+library(kableExtra) # Mejorar tablas 
+library(ggridges) #graficos
+
+```
+
+Luego importamos los datos de la EPH para poder trabajar con los mismos. Se puede importar un trimestre o varios
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+base20243 <- eph::get_microdata(2024,3)
+```
+
+Ahora leemos tablas de datos con códigos que nos permitirán asignar regiones y aglomerados
+
+```{r}
+aglomerados <- read_excel("Fuentes/Aglomerados EPH.xlsx")
+regiones <- read_excel("Fuentes/Regiones.xlsx")
+```
+
+Vamos a calcular la tasas habituales de empleo para todo el País
+
+```{r include=FALSE}
+Tasas <- base20243 %>% 
+  summarise(Poblacion         = sum(PONDERA),
+            Ocupados          = sum(PONDERA[ESTADO == 1]),
+            Desocupados       = sum(PONDERA[ESTADO == 2]),
+            PEA               = Ocupados + Desocupados,
+            Ocupados_demand   = sum(PONDERA[ESTADO == 1 & PP03J == 1]),
+            Suboc_demandante  = sum(PONDERA[ESTADO == 1 & INTENSI == 1 & PP03J == 1]),
+            Suboc_no_demand   = sum(PONDERA[ESTADO == 1 & INTENSI == 1 & PP03J %in% c(2, 9)]),
+            Subocupados       = Suboc_demandante + Suboc_no_demand,
+            'Tasa Actividad'                  = PEA/Poblacion,
+            'Tasa Empleo'                     = Ocupados/Poblacion,
+            'Tasa Desocupacion'               = Desocupados/PEA,
+            'Tasa ocupados demandantes'       = Ocupados_demand/PEA,
+            'Tasa Subocupación'               = Subocupados/PEA,
+            'Tasa Subocupación demandante'    = Suboc_demandante/PEA,
+            'Tasa Subocupación no demandante' = Suboc_no_demand/PEA)  %>% 
+  select(-(1:8)) # Elimino los niveles poblacionales
+
+Tasas
+```
+
+Ahora queremos imprimir este data frame llamado tasas
+
+```{r}
+Tasas %>% kable("html", caption = "Tasas Sociales básicas Total País") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+Procedemos a calcular las mimas tasas pero por aglomerado
+
+```{r}
+base20243 <- base20243 %>%
+  mutate(AGLOMERADO = recode(AGLOMERADO,
+                             "2" = "Gran la Plata",
+                             "3" = "Bahía Blanca –Cerri",
+                             "4"= "Gran Rosario",
+                             "5"= "Gran Santa Fé", 
+                             "6" = "Gran Paraná",
+                             "7" = "Posadas",
+                             "8" = "Gran Resistencia",
+                             "9" = "Cdro. Rivadavia - R.Tilly",
+                             "10" = "Gran Mendoza",
+                             "12" = "Corrientes",
+                             "13" = "Gran Córdoba",
+                             "14" = "Concordia",
+                             "15" = "Formosa", 
+                             "17" = "Neuquén – Plottier", 
+                             "18" = "S.del Estero - La Banda",
+                             "19" = "Jujuy - Palpalá",
+                             "20" = "Río Gallegos", 
+                             "22" = "Gran Catamarca",
+                             "23" = "Salta", 
+                             "25" = "La Rioja",
+                             "26" = "San Luis - El Chorrillo",
+                             "27" = "Gran San Juan",
+                             "29" = "Gran Tucumán - T. Viejo",
+                             "30" = "Santa Rosa - Toay" ,
+                             "31" = "Ushuaia - Río Grande",
+                             "32" = "Ciudad de Bs As", 
+                             "33" = "Partidos del GBA",
+                             "34" = "Mar del Plata - Batán",
+                             "36" = "Río Cuarto", 
+                             "38" = "San Nicolás – Villa Constitución", 
+                             "91" = "Rawson – Trelew", 
+                             "93"="Viedma – Carmen de Patagones"))
+```
+
+```{r}
+# Tasas Básicas por Aglomerados
+tasas_aglomerados <- base20243 %>% 
+  group_by(AGLOMERADO) %>% 
+  summarise(Poblacion         = sum(PONDERA),
+            Ocupados          = sum(PONDERA[ESTADO == 1]),
+            Desocupados       = sum(PONDERA[ESTADO == 2]),
+            PEA               = Ocupados + Desocupados,
+            Ocupados_demand   = sum(PONDERA[ESTADO == 1 & PP03J == 1]),
+            Suboc_demandante  = sum(PONDERA[ESTADO == 1 & INTENSI == 1 & PP03J == 1]),
+            Suboc_no_demand   = sum(PONDERA[ESTADO == 1 & INTENSI == 1 & PP03J %in% c(2, 9)]),
+            Subocupados       = Suboc_demandante + Suboc_no_demand,
+            'Tasa Actividad %'                  = PEA/Poblacion*100,
+            'Tasa Empleo %'                     = Ocupados/Poblacion*100,
+            'Tasa Desocupacion %'               = Desocupados/PEA*100,
+            'Tasa ocupados demandantes %'       = Ocupados_demand/PEA*100,
+            'Tasa Subocupación %'               = Subocupados/PEA*100,
+            'Tasa Subocupación demandante %'    = Suboc_demandante/PEA*100,
+            'Tasa Subocupación no demandante %' = Suboc_no_demand/PEA*100)%>% 
+  ungroup() %>%  
+  select(-(2:9)) # Elimino los niveles poblacionales (ahora tengo como 1er variable el aglomerado)
+tasas_aglomerados %>% kable("html", caption = "Tasas Sociales básicas por Aglomerados") %>% 
+kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+Calculamos ahora la tasas sociales básicas por Región
+
+```{r}
+base20243 <- base20243 %>%
+  mutate(REGION = recode(REGION,
+                        "1"= "GBA", "43"="Pampeana",
+                        "40"="Noroeste", "41"="Noreste", 
+                        "42"="Cuyo", "44"="Patagonia"))
+```
+
+```{r}
+# Tasas Básicas por Región
+tasas_región <- base20243 %>% 
+  group_by(REGION) %>% 
+  summarise(Poblacion         = sum(PONDERA),
+            Ocupados          = sum(PONDERA[ESTADO == 1]),
+            Desocupados       = sum(PONDERA[ESTADO == 2]),
+            PEA               = Ocupados + Desocupados,
+            Ocupados_demand   = sum(PONDERA[ESTADO == 1 & PP03J == 1]),
+            Suboc_demandante  = sum(PONDERA[ESTADO == 1 & INTENSI == 1 & PP03J == 1]),
+            Suboc_no_demand   = sum(PONDERA[ESTADO == 1 & INTENSI == 1 & PP03J %in% c(2, 9)]),
+            Subocupados       = Suboc_demandante + Suboc_no_demand,
+            'Tasa Actividad %'                  = PEA/Poblacion*100,
+            'Tasa Empleo %'                     = Ocupados/Poblacion*100,
+            'Tasa Desocupacion %'               = Desocupados/PEA*100,
+            'Tasa ocupados demandantes %'       = Ocupados_demand/PEA*100,
+            'Tasa Subocupación %'               = Subocupados/PEA*100,
+            'Tasa Subocupación demandante %'    = Suboc_demandante/PEA*100,
+            'Tasa Subocupación no demandante %' = Suboc_no_demand/PEA*100)%>% 
+  ungroup() %>%  
+  select(-(2:9)) # Elimino los niveles poblacionales (ahora tengo como 1er variable el aglomerado)
+tasas_región %>% kable("html", caption = "Tasas Sociales básicas por Región") %>% 
+kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+Calulemos ahora las tasas básicas según sexo
+
+```{r}
+base20243 <- base20243 %>% mutate(SEXO = recode(SEXO,
+                             "1" = "Varón",
+                             "2" = "Mujer"))
+```
+
+```{r}
+# Tasas Básicas por Sexo
+tasas_sexo <- base20243 %>% 
+  group_by(SEXO) %>% 
+  summarise(Poblacion         = sum(PONDERA),
+            Ocupados          = sum(PONDERA[ESTADO == 1]),
+            Desocupados       = sum(PONDERA[ESTADO == 2]),
+            PEA               = Ocupados + Desocupados,
+            Ocupados_demand   = sum(PONDERA[ESTADO == 1 & PP03J == 1]),
+            Suboc_demandante  = sum(PONDERA[ESTADO == 1 & INTENSI == 1 & PP03J == 1]),
+            Suboc_no_demand   = sum(PONDERA[ESTADO == 1 & INTENSI == 1 & PP03J %in% c(2, 9)]),
+            Subocupados       = Suboc_demandante + Suboc_no_demand,
+            'Tasa Actividad %'                  = PEA/Poblacion*100,
+            'Tasa Empleo %'                     = Ocupados/Poblacion*100,
+            'Tasa Desocupacion %'               = Desocupados/PEA*100,
+            'Tasa ocupados demandantes %'       = Ocupados_demand/PEA*100,
+            'Tasa Subocupación %'               = Subocupados/PEA*100,
+            'Tasa Subocupación demandante %'    = Suboc_demandante/PEA*100,
+            'Tasa Subocupación no demandante %' = Suboc_no_demand/PEA*100)%>% 
+  ungroup() %>%  
+  select(-(2:9)) # Elimino los niveles poblacionales (ahora tengo como 1er variable el aglomerado)
+tasas_sexo %>% kable("html", caption = "Tasas Sociales básicas por Sexo") %>% 
+kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+Construyamos una variable agrupando la EDAD de los individuos
+
+```{r}
+base20243 <- base20243 %>% 
+  rename(EDAD= CH06)
+```
+
+```{r}
+base20243 <- base20243 %>%
+  mutate(Grupo_etario = case_when(
+    EDAD < 18 ~ "Menores",
+    EDAD >=18 & EDAD <=65 ~ "Adultos",
+    EDAD > 65 ~ "Adultos Mayores",
+    TRUE ~ "indefinido"
+  ))
+```
+
+```{r}
+# Tasas Básicas por grupo Etario
+tasas_grupo_etario <- base20243 %>% 
+  group_by(Grupo_etario) %>% 
+  summarise(Poblacion         = sum(PONDERA),
+            Ocupados          = sum(PONDERA[ESTADO == 1]),
+            Desocupados       = sum(PONDERA[ESTADO == 2]),
+            PEA               = Ocupados + Desocupados,
+            Ocupados_demand   = sum(PONDERA[ESTADO == 1 & PP03J == 1]),
+            Suboc_demandante  = sum(PONDERA[ESTADO == 1 & INTENSI == 1 & PP03J == 1]),
+            Suboc_no_demand   = sum(PONDERA[ESTADO == 1 & INTENSI == 1 & PP03J %in% c(2, 9)]),
+            Subocupados       = Suboc_demandante + Suboc_no_demand,
+            'Tasa Actividad %'                  = PEA/Poblacion*100,
+            'Tasa Empleo %'                     = Ocupados/Poblacion*100,
+            'Tasa Desocupacion %'               = Desocupados/PEA*100,
+            'Tasa ocupados demandantes %'       = Ocupados_demand/PEA*100,
+            'Tasa Subocupación %'               = Subocupados/PEA*100,
+            'Tasa Subocupación demandante %'    = Suboc_demandante/PEA*100,
+            'Tasa Subocupación no demandante %' = Suboc_no_demand/PEA*100)%>% 
+  ungroup() %>%  
+  select(-(2:9)) # Elimino los niveles poblacionales (ahora tengo como 1er variable el aglomerado)
+tasas_grupo_etario %>% kable("html", caption = "Tasas Sociales básicas por Sexo") %>% kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+Seleccionemos ahora los Aglomerados de Entre Ríos
+
+```{r}
+df_ER <- base20243 %>%
+  filter(AGLOMERADO %in% c("Gran Paraná","Concordia"))
+```
+
+Ahora calculemos las tasas basicas para estos aglomerados
+
+```{r}
+# Tasas Básicas Gran Paraná y Concórdia
+tasas_aglomerados_ER <- df_ER %>% 
+  group_by(AGLOMERADO) %>% 
+  summarise(Poblacion         = sum(PONDERA),
+            Ocupados          = sum(PONDERA[ESTADO == 1]),
+            Desocupados       = sum(PONDERA[ESTADO == 2]),
+            PEA               = Ocupados + Desocupados,
+            Ocupados_demand   = sum(PONDERA[ESTADO == 1 & PP03J == 1]),
+            Suboc_demandante  = sum(PONDERA[ESTADO == 1 & INTENSI == 1 & PP03J == 1]),
+            Suboc_no_demand   = sum(PONDERA[ESTADO == 1 & INTENSI == 1 & PP03J %in% c(2, 9)]),
+            Subocupados       = Suboc_demandante + Suboc_no_demand,
+            'Tasa Actividad %'                  = PEA/Poblacion*100,
+            'Tasa Empleo %'                     = Ocupados/Poblacion*100,
+            'Tasa Desocupacion %'               = Desocupados/PEA*100,
+            'Tasa ocupados demandantes %'       = Ocupados_demand/PEA*100,
+            'Tasa Subocupación %'               = Subocupados/PEA*100,
+            'Tasa Subocupación demandante %'    = Suboc_demandante/PEA*100,
+            'Tasa Subocupación no demandante %' = Suboc_no_demand/PEA*100)%>% 
+  ungroup() %>%  
+  select(-(2:9)) # Elimino los niveles poblacionales (ahora tengo como 1er variable el aglomerado)
+tasas_aglomerados_ER %>% kable("html", caption = "Tasas Sociales básicas por Aglomerados") %>% 
+kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+```
+
+```{r}
+salario_y_no_registro <-  df_ER %>% 
+  filter(ESTADO == 1, CAT_OCUP == 3) %>% 
+  summarise(tasa_no_reg_er = sum(PONDERA[PP07H == 2])/sum(PONDERA),
+            salario_prom_er = weighted.mean(P21,PONDIIO),
+            asalariados_er = sum(PONDERA)) 
+```
+
+```{r}
+df_ER <- df_ER %>%
+    filter(P21 > 0 & !is.na(P21))
+```
+
+```{r message=FALSE, warning=FALSE}
+ggplot(df_ER, aes(x = P21, y = SEXO, fill=SEXO)) + 
+  geom_density_ridges()+
+  scale_fill_gdocs()+ # Elijo paleta de colores para el relleno (fill)
+  scale_x_continuous(limits = c(10000,60000))#Restrinjo el gráfico hasta ingresos de $500000
+```
+
+```         
+```
+
+```{r}
+ggplot(df_ER, aes(x= REGION, y = P21 ,fill = REGION )) +   geom_boxplot()+   scale_y_continuous(limits = c(0, 40000))+   facet_wrap(vars(SEXO))
+```
+
+```{r}
+ggdata <- base20243 %>%
+    filter(!is.na(P21))
+```
+
+```{r}
+ggdata <- ggdata %>% 
+  filter(!is.na(NIVEL_ED),
+         NIVEL_ED!=7, #!= → Es el operador que significa "no es igual a"
+         PP04A !=3) %>% 
+  mutate(NIVEL_ED = factor(case_when(NIVEL_ED == 1  ~ 'Primaria \n Incompleta', 
+                                     NIVEL_ED == 2  ~ 'Primaria \n Completa',
+                                     NIVEL_ED == 3  ~ 'Secundaria \n Incompleta',
+                                     NIVEL_ED == 4  ~ 'Secundaria \n Completa',
+                                     NIVEL_ED == 5  ~ 'Superior \n Universitaria \n Incompleta',
+                                     NIVEL_ED == 6  ~ 'Superior \n Universitaria \nCompleta',
+                                     FALSE          ~ 'Otro'),
+                           levels= c('Primaria \n Incompleta',
+                                     'Primaria \n Completa',
+                                     'Secundaria \nIncompleta',
+                                     'Secundaria \nCompleta',
+                                     'Superior \nUniversitaria \nIncompleta',
+                                     'Superior \nUniversitaria \nCompleta')),
+                  Establecimiento    = case_when(PP04A == 1 ~ 'Estatal',
+                                        PP04A == 2 ~ 'Privado',
+                                        FALSE      ~ 'Otro'))
+
+ggdata
+```
+
+```{r}
+ggplot(ggdata, aes(EDAD, P21, colour = SEXO, shape = SEXO, alpha = P21))+
+  geom_smooth() + 
+  labs(
+    x = 'Edad',
+    y = 'ingreso',
+    title = 'Ingreso por ocupación principal',
+    subtitle = 'Según edad, nivel educativo y sexo') +
+  theme_minimal()+
+  scale_y_continuous()+
+  scale_alpha(guide = FALSE)+
+  facet_grid(~NIVEL_ED)
+```
+
+title: "Dashboard Precariedad EPH"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(eph)
+library(plotly)
+library(tidyverse)
+base <- get_microdata(year = 2023,period = 4)
+
+precariedad_rama <- base %>%
+  organize_caes() %>%
+  mutate(PONDIIO = as.numeric(PONDIIO)) %>% #Evitar integer overflow
+  filter(ESTADO == 1, CAT_OCUP == 3) %>% 
+  group_by(TRIMESTRE,ANO4,caes_eph_label) %>% 
+  summarise(asalariados = sum(PONDERA,na.rm = T),
+            salario_prom = weighted.mean(P21,PONDIIO,na.rm = T),
+            registrados = sum(PONDERA[PP07H == 1],na.rm = T),
+            no_registrados = sum(PONDERA[PP07H == 2],na.rm = T),
+            tasa_no_reg = no_registrados/asalariados) %>% 
+  mutate(tasa_no_reg = round(tasa_no_reg,digits = 2),
+         salario_prom = round(salario_prom,digits = 0))
+
+
+
+```
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Precariedad laboral segun ramas 
+
+```{r}
+grafico_ramas <- ggplot(
+  precariedad_rama,
+  mapping = aes(x = tasa_no_reg,
+                y = reorder(caes_eph_label,tasa_no_reg),
+                fill = caes_eph_label,
+                text = paste0(
+                  "</br> Asalariados: ", asalariados,
+                  "</br> Tasa No Reg: ",tasa_no_reg,
+                  "</br> Salario Prom: ",salario_prom))
+  )+
+  geom_col()+
+  labs(y = "",x= "Tasa de no registro")+ 
+  theme(legend.position = "none")
+
+ggplotly(grafico_ramas,tooltip = "text")
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Precariedad por rama y sexo
+
+```{r, warning=FALSE}
+precariedad_rama_sexo <- base %>%
+  organize_caes() %>%
+  mutate(PONDIIO = as.numeric(PONDIIO),
+         Sexo = ifelse(CH04 == 1,"Varón","Mujer")) %>%
+  filter(ESTADO == 1, CAT_OCUP == 3) %>% 
+  group_by(TRIMESTRE,ANO4,Sexo,caes_eph_label) %>% 
+  summarise(asalariados = sum(PONDERA,na.rm = T),
+            salario_prom = weighted.mean(P21,PONDIIO,na.rm = T),
+            registrados = sum(PONDERA[PP07H == 1],na.rm = T),
+            no_registrados = sum(PONDERA[PP07H == 2],na.rm = T),
+            tasa_no_reg = no_registrados/asalariados) %>% 
+  mutate(tasa_no_reg = round(tasa_no_reg,digits = 1),
+         salario_prom = round(salario_prom,digits = 0)) %>% 
+  ungroup()
+
+precariedad_rama_sexo %>% 
+  knitr::kable()
+```
